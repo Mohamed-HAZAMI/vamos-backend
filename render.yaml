@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: vamos-padel-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    env: node
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_HOST
+        fromDatabase:
+          name: vamos-padel-db
+          property: connectionString
+    plan: free
