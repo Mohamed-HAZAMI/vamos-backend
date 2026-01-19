@@ -8,12 +8,12 @@ import axios from 'axios';
 
 // Configuration VAMOS
 const VAMOS_CONFIG = {
-  baseUrl: 'https://vamos-staging-webapi-bqbqahgpdqd9gwec.italynorth-01.azurewebsites.net/api/v1',
-  clientId: '099F89B0-1148-40F8-B4A4-81E0D6B73141',
-  facilityId: '10163',
+  baseUrl: 'https://vamos-webapi-chc2ejhfh4dndsdb.italynorth-01.azurewebsites.net/api/v2',
+  clientId: '5DB37AC2-FAB0-4588-A7AB-13CAAD8C69F9',
+  facilityId: '344',
   credentials: {
-    email: "ahmedmahjoub120321+admin-vs@gmail.com",
-    password: "@VsStaging1!**",
+    email: "contact@vamossport.net",
+    password: "@Vamos510",
     platform: 1
   }
 };
@@ -31,6 +31,7 @@ const authenticateVamos = async () => {
         }
       }
     );
+    // console.log("response.data.accessToken" , response.data.accessToken)
     return response.data.accessToken;
   } catch (error) {
     console.error('Erreur authentification VAMOS:', error.response?.data || error.message);
@@ -56,11 +57,13 @@ const reserveVamosSlot = async (dateDeReservation, clientName, sportId  ,terrain
       }
     );
 
+    // console.log("allSlots" , response.data)
+
     const allSlots = response.data;
 
     // 3. Trouver le slot correspondant à la dateDeReservation (status = 0)
     const targetSlot = allSlots.find(slot => {
-      return slot.endTime === dateDeReservation && slot.text.charAt(1) ===  terrain.charAt(1)  && slot.status === 0;
+      return slot.endTime === dateDeReservation && slot.text.charAt(2) ===  terrain.charAt(1)  && slot.status === 0;
     });
 
     if (!targetSlot) {
@@ -109,59 +112,6 @@ const reserveVamosSlot = async (dateDeReservation, clientName, sportId  ,terrain
 
   } catch (error) {
     console.error('❌ Erreur lors de la réservation VAMOS:', error.message);
-    console.error('Détails:', error.response?.data || error.message);
-    
-    return {
-      success: false,
-      error: `Erreur VAMOS: ${error.message}`,
-      slotId: null,
-      sportId: sportId || null
-    };
-  }
-};
-
-// Fonction pour libérer un slot VAMOS
-const freeVamosSlot = async (slotId, dateDeReservation, sportId ) => {
-  try {
-
-    // 1. Authentifier auprès de VAMOS
-    const accessToken = await authenticateVamos();
-
-    // 2. Libérer le slot via l'API VAMOS (même requête mais status: 0)
-    const response = await axios.put(
-      `${VAMOS_CONFIG.baseUrl}/facilities/${VAMOS_CONFIG.facilityId}/slots/${slotId}`,
-      {
-        status: 0, // ← Changé de 1 à 0 pour libérer le slot
-        clientName: "", // Nom vide car slot libéré
-        until: dateDeReservation
-      },
-      {
-        headers: {
-          'X-Client-Id': VAMOS_CONFIG.clientId,
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    if (response.status === 204) {
-      return {
-        success: true,
-        slotId: slotId,
-        sportId: sportId,
-        message: "Slot libéré avec succès sur VAMOS"
-      };
-    } else {
-      return {
-        success: false,
-        error: `Échec de la libération VAMOS (status: ${response.status})`,
-        slotId: null,
-        sportId: sportId
-      };
-    }
-
-  } catch (error) {
-    console.error('❌ Erreur lors de la libération VAMOS:', error.message);
     console.error('Détails:', error.response?.data || error.message);
     
     return {
@@ -300,6 +250,200 @@ export const addNewReservation = async (req, res) => {
   }
 };
 
+// Dupliquer une réservation (modifié)
+export const addDupliquer = async (req, res) => {
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+
+  try {
+    const { reservationId } = req.params;
+    const { dateFin } = req.body; // Date de fin reçue dans le body
+
+    // Validation de la date de fin
+    if (!dateFin) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'La date de fin est requise'
+      });
+    }
+
+    const endDate = new Date(dateFin);
+    if (isNaN(endDate.getTime())) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Format de date invalide'
+      });
+    }
+
+    const [reservations] = await conn.query(
+      'SELECT * FROM reservation WHERE id = ?',
+      [reservationId]
+    );
+
+    if (reservations.length === 0) {
+      await conn.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Réservation non trouvée'
+      });
+    }
+
+    const originalReservation = reservations[0];
+    const originalDate = new Date(originalReservation.jour.split(' ')[1].split('/').reverse().join('-')).toISOString();
+
+    function formatFrenchDate(date) {
+      const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+      const dayName = days[date.getDay()];
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${dayName} ${day}/${month}/${year}`;
+    }
+
+    const allDates = [];
+    let currentDate = new Date(originalDate);
+    currentDate.setDate(currentDate.getDate() + 7); // Commence une semaine après la date originale
+    
+    // Générer les dates jusqu'à la date de fin spécifiée
+    while (currentDate <= endDate) {
+      allDates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 7); // Ajoute 7 jours à chaque itération
+    }
+
+    const createdReservations = [];
+    for (const date of allDates) {
+      const formattedDate = formatFrenchDate(date);
+      
+      const [existing] = await conn.query(
+        'SELECT id FROM reservation WHERE idEmplacement = ? AND terrain = ? AND jour = ? AND creneau = ?',
+        [
+          originalReservation.idEmplacement,
+          originalReservation.terrain,
+          formattedDate,
+          originalReservation.creneau
+        ]
+      );
+
+      if (existing.length === 0) {
+        const [newReservation] = await conn.execute(
+          'INSERT INTO reservation (idEmplacement, terrain, type, jour, creneau, client, telephone, remarque, statut) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            originalReservation.idEmplacement,
+            originalReservation.terrain,
+            originalReservation.type,
+            formattedDate,
+            originalReservation.creneau,
+            originalReservation.client,
+            originalReservation.telephone,
+            originalReservation.remarque,
+            originalReservation.statut || 'réservé'
+          ]
+        );
+
+        if (originalReservation.group_id) {
+          await conn.execute(
+            'INSERT INTO group_adherent (group_id, reservation_id) VALUES (?, ?)',
+            [originalReservation.group_id, newReservation.insertId]
+          );
+        }
+
+        createdReservations.push({
+          id: newReservation.insertId,
+          date: formattedDate,
+          creneau: originalReservation.creneau
+        });
+      }
+    }
+
+    await conn.commit();
+    
+    res.status(201).json({
+      success: true,
+      message: `Réservation dupliquée tous les 7 jours jusqu'au ${formatFrenchDate(endDate)}`,
+      originalReservation: {
+        id: originalReservation.id,
+        jour: formatFrenchDate(new Date(originalDate)),
+        jourOriginal: originalReservation.jour,
+        creneau: originalReservation.creneau,
+        client: originalReservation.client,
+        telephone: originalReservation.telephone,
+        remarque: originalReservation.remarque
+      },
+      createdReservations,
+      totalDatesGenerated: allDates.length,
+      dateDebut: formatFrenchDate(new Date(originalDate)),
+      dateFin: formatFrenchDate(endDate)
+    });
+
+  } catch (err) {
+    await conn.rollback();
+    console.error('Erreur dans addDupliquer:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de la duplication',
+      error: err.message,
+      code: err.code
+    });
+  } finally {
+    conn.release();
+  }
+};
+
+// Fonction pour libérer un slot VAMOS
+const freeVamosSlot = async (slotId, dateDeReservation, sportId ) => {
+  try {
+
+    // 1. Authentifier auprès de VAMOS
+    const accessToken = await authenticateVamos();
+
+    // 2. Libérer le slot via l'API VAMOS (même requête mais status: 0)
+    const response = await axios.put(
+      `${VAMOS_CONFIG.baseUrl}/facilities/${VAMOS_CONFIG.facilityId}/slots/${slotId}`,
+      {
+        status: 0, // ← Changé de 1 à 0 pour libérer le slot
+        clientName: "", // Nom vide car slot libéré
+        until: dateDeReservation
+      },
+      {
+        headers: {
+          'X-Client-Id': VAMOS_CONFIG.clientId,
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (response.status === 204) {
+      return {
+        success: true,
+        slotId: slotId,
+        sportId: sportId,
+        message: "Slot libéré avec succès sur VAMOS"
+      };
+    } else {
+      return {
+        success: false,
+        error: `Échec de la libération VAMOS (status: ${response.status})`,
+        slotId: null,
+        sportId: sportId
+      };
+    }
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la libération VAMOS:', error.message);
+    console.error('Détails:', error.response?.data || error.message);
+    
+    return {
+      success: false,
+      error: `Erreur VAMOS: ${error.message}`,
+      slotId: null,
+      sportId: sportId || null
+    };
+  }
+};
+
 // Supprimer une réservation
 export const deleteReservation = async (req, res) => {
   const conn = await pool.getConnection();
@@ -341,7 +485,7 @@ export const deleteReservation = async (req, res) => {
         
         // Trouver le slot réservé par ce client à cette date
         const targetSlot = slotsResponse.data.find(slot => 
-          slot.text.charAt(1) ===  terrain.charAt(1) &&
+          slot.text.charAt(2) ===  terrain.charAt(1) &&
           slot.endTime === dateDeReservation && 
           slot.status === 1
         );
@@ -1460,143 +1604,3 @@ export const getGroupPresenceStats = async (req, res) => {
   }
 };
 
-// Dupliquer une réservation (modifié)
-export const addDupliquer = async (req, res) => {
-  const conn = await pool.getConnection();
-  await conn.beginTransaction();
-
-  try {
-    const { reservationId } = req.params;
-    const { dateFin } = req.body; // Date de fin reçue dans le body
-
-    // Validation de la date de fin
-    if (!dateFin) {
-      await conn.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'La date de fin est requise'
-      });
-    }
-
-    const endDate = new Date(dateFin);
-    if (isNaN(endDate.getTime())) {
-      await conn.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'Format de date invalide'
-      });
-    }
-
-    const [reservations] = await conn.query(
-      'SELECT * FROM reservation WHERE id = ?',
-      [reservationId]
-    );
-
-    if (reservations.length === 0) {
-      await conn.rollback();
-      return res.status(404).json({
-        success: false,
-        message: 'Réservation non trouvée'
-      });
-    }
-
-    const originalReservation = reservations[0];
-    const originalDate = new Date(originalReservation.jour.split(' ')[1].split('/').reverse().join('-')).toISOString();
-
-    function formatFrenchDate(date) {
-      const days = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
-      const dayName = days[date.getDay()];
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${dayName} ${day}/${month}/${year}`;
-    }
-
-    const allDates = [];
-    let currentDate = new Date(originalDate);
-    currentDate.setDate(currentDate.getDate() + 7); // Commence une semaine après la date originale
-    
-    // Générer les dates jusqu'à la date de fin spécifiée
-    while (currentDate <= endDate) {
-      allDates.push(new Date(currentDate));
-      currentDate.setDate(currentDate.getDate() + 7); // Ajoute 7 jours à chaque itération
-    }
-
-    const createdReservations = [];
-    for (const date of allDates) {
-      const formattedDate = formatFrenchDate(date);
-      
-      const [existing] = await conn.query(
-        'SELECT id FROM reservation WHERE idEmplacement = ? AND terrain = ? AND jour = ? AND creneau = ?',
-        [
-          originalReservation.idEmplacement,
-          originalReservation.terrain,
-          formattedDate,
-          originalReservation.creneau
-        ]
-      );
-
-      if (existing.length === 0) {
-        const [newReservation] = await conn.execute(
-          'INSERT INTO reservation (idEmplacement, terrain, type, jour, creneau, client, telephone, remarque, statut) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            originalReservation.idEmplacement,
-            originalReservation.terrain,
-            originalReservation.type,
-            formattedDate,
-            originalReservation.creneau,
-            originalReservation.client,
-            originalReservation.telephone,
-            originalReservation.remarque,
-            originalReservation.statut || 'réservé'
-          ]
-        );
-
-        if (originalReservation.group_id) {
-          await conn.execute(
-            'INSERT INTO group_adherent (group_id, reservation_id) VALUES (?, ?)',
-            [originalReservation.group_id, newReservation.insertId]
-          );
-        }
-
-        createdReservations.push({
-          id: newReservation.insertId,
-          date: formattedDate,
-          creneau: originalReservation.creneau
-        });
-      }
-    }
-
-    await conn.commit();
-    
-    res.status(201).json({
-      success: true,
-      message: `Réservation dupliquée tous les 7 jours jusqu'au ${formatFrenchDate(endDate)}`,
-      originalReservation: {
-        id: originalReservation.id,
-        jour: formatFrenchDate(new Date(originalDate)),
-        jourOriginal: originalReservation.jour,
-        creneau: originalReservation.creneau,
-        client: originalReservation.client,
-        telephone: originalReservation.telephone,
-        remarque: originalReservation.remarque
-      },
-      createdReservations,
-      totalDatesGenerated: allDates.length,
-      dateDebut: formatFrenchDate(new Date(originalDate)),
-      dateFin: formatFrenchDate(endDate)
-    });
-
-  } catch (err) {
-    await conn.rollback();
-    console.error('Erreur dans addDupliquer:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la duplication',
-      error: err.message,
-      code: err.code
-    });
-  } finally {
-    conn.release();
-  }
-};
