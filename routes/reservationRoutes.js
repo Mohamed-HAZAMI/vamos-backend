@@ -16,7 +16,8 @@ import {
   updateVersement,
   deleteVersement,
   getReservationCoaches,
-  updateCoachPresence
+  updateCoachPresence,
+  getSynchronization
 } from '../controllers/reservationController.js';
 
 const router = express.Router();
@@ -47,6 +48,8 @@ router.get('/:reservationId/coaches', getReservationCoaches);
 
 router.get('/group/:groupId/cours/:courId/presences', getGroupPresenceStats);
 router.post('/dupliquer/:reservationId', addDupliquer);
+
+router.post('/synchronization' , getSynchronization)
 
 
 export default router;

@@ -1,3 +1,4 @@
+import { config } from "dotenv";
 import pool from "../config/db.js";
 
 
@@ -8,15 +9,30 @@ import axios from 'axios';
 
 // Configuration VAMOS
 const VAMOS_CONFIG = {
-  baseUrl: 'https://vamos-webapi-chc2ejhfh4dndsdb.italynorth-01.azurewebsites.net/api/v2',
-  clientId: '5DB37AC2-FAB0-4588-A7AB-13CAAD8C69F9',
-  facilityId: '344',
+  baseUrl: 'https://vamos-staging-webapi-bqbqahgpdqd9gwec.italynorth-01.azurewebsites.net/api/v1',
+  clientId: '099F89B0-1148-40F8-B4A4-81E0D6B73141',
+  facilityId: '10163',
+  terrainCharAt: 1,
   credentials: {
-    email: "contact@vamossport.net",
-    password: "@Vamos510",
+    email: "ahmedmahjoub120321+admin-vs@gmail.com",
+    password: "@VsStaging1!**",
     platform: 1
   }
 };
+
+// const VAMOS_CONFIG = {
+//   baseUrl: 'https://vamos-webapi-chc2ejhfh4dndsdb.italynorth-01.azurewebsites.net/api/v2',
+//   clientId: '5DB37AC2-FAB0-4588-A7AB-13CAAD8C69F9',
+//   facilityId: '344',
+//   terrainCharAt: 2,
+//   credentials: {
+//     email: "contact@vamossport.net",
+//     password: "@Vamos510",
+//     platform: 1
+//   }
+// };
+
+
 
 // Fonction pour authentifier auprès de VAMOS
 const authenticateVamos = async () => {
@@ -63,7 +79,7 @@ const reserveVamosSlot = async (dateDeReservation, clientName, sportId  ,terrain
 
     // 3. Trouver le slot correspondant à la dateDeReservation (status = 0)
     const targetSlot = allSlots.find(slot => {
-      return slot.endTime === dateDeReservation && slot.text.charAt(2) ===  terrain.charAt(1)  && slot.status === 0;
+      return slot.endTime === dateDeReservation && slot.text.charAt(VAMOS_CONFIG.terrainCharAt) ===  terrain.charAt(1)  && slot.status === 0;
     });
 
     if (!targetSlot) {
@@ -249,6 +265,11 @@ export const addNewReservation = async (req, res) => {
     });
   }
 };
+
+export const getSynchronization = async (req, res) => {
+  console.log("data111111" , req.body)
+
+}
 
 // Dupliquer une réservation (modifié)
 export const addDupliquer = async (req, res) => {
@@ -485,7 +506,7 @@ export const deleteReservation = async (req, res) => {
         
         // Trouver le slot réservé par ce client à cette date
         const targetSlot = slotsResponse.data.find(slot => 
-          slot.text.charAt(2) ===  terrain.charAt(1) &&
+          slot.text.charAt(VAMOS_CONFIG.terrainCharAt) ===  terrain.charAt(1) &&
           slot.endTime === dateDeReservation && 
           slot.status === 1
         );
