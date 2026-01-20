@@ -268,29 +268,30 @@ export const addNewReservation = async (req, res) => {
 export const getSynchronization = async (req, res) => {
   console.log("Données reçues:", req.body);
 
+  const connection = await pool.getConnection();
+  
   try {
-    const { weekRange, sportId , idEmplacement , type , statut , terrain} = req.body;
-    const jour = "jour 22/01/2026"
+    await connection.beginTransaction();
 
-    if (!weekRange || !sportId) {
+    const { weekRange, sportId, idEmplacement, type = "passager", statut = "réservé" } = req.body;
+
+    if (!weekRange || !sportId || !idEmplacement) {
       return res.status(400).json({
-        error: "Les paramètres weekRange et sportId sont requis"
+        error: "Les paramètres weekRange, sportId et idEmplacement sont requis"
       });
     }
 
-    // Parser l'intervalle de dates
-    const [startStr, endStr] = weekRange.split(' - ').map(str => str.trim());
-    const [startDay, startMonth, startYear] = startStr.split('/').map(Number);
-    const [endDay, endMonth, endYear] = endStr.split('/').map(Number);
+    // Parser l'intervalle
+    const [startStr, endStr] = weekRange.split(' - ');
+    const [d1, m1, y1] = startStr.split('/').map(Number);
+    const [d2, m2, y2] = endStr.split('/').map(Number);
     
-    const startDate = new Date(startYear, startMonth - 1, startDay);
-    const endDate = new Date(endYear, endMonth - 1, endDay);
-    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date(y1, m1-1, d1);
+    const endDate = new Date(y2, m2-1, d2, 23, 59, 59, 999);
 
-    // Authentifier auprès de VAMOS
+    // Authentifier VAMOS
     const accessToken = await authenticateVamos();
     
-    // Récupérer les slots pour le sportId spécifié
     const response = await axios.get(
       `${VAMOS_CONFIG.baseUrl}/slots/facility/${VAMOS_CONFIG.facilityId}/sport/${sportId}?coachingAcademy=false&fullHistory=false`,
       {
@@ -301,23 +302,120 @@ export const getSynchronization = async (req, res) => {
       }
     );
 
-    // Filtrer: status=1 ET date dans l'intervalle
     const reservedSlots = response.data.filter(slot => {
-      if (slot.status !== 1) return false; // Seulement réservés
+      if (slot.status !== 1) return false;
       const slotDate = new Date(slot.startTime);
       return slotDate >= startDate && slotDate <= endDate;
     });
 
-    // Trier par date
-    reservedSlots.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-
-    // Retourner les slots réservés
-     console.log("reservedSlots" , reservedSlots)
-    res.json(reservedSlots);
-
+    const results = [];
+    
+    // Pour chaque slot
+    for (const slot of reservedSlots) {
+      const startTime = new Date(slot.startTime);
+      const endTime = new Date(slot.endTime);
+      
+      // Formater date
+      const jour = startTime.toLocaleDateString('fr-FR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+      
+      // Formater créneau
+      const formatTime = (date) => {
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}h${minutes}`;
+      };
+      
+      const creneau = `${formatTime(startTime)}-${formatTime(endTime).replace('h', ':')}`;
+      
+      // Déterminer terrain
+      const terrainMatch = slot.text.match(/^([A-Z]\d+)/);
+      const terrain = terrainMatch ? terrainMatch[1] : "T1";
+      
+      // Client
+      let client = slot.clientName || "";
+      if (!client && slot.text.includes('-')) {
+        const parts = slot.text.split('-');
+        if (parts.length > 1) {
+          client = parts[1].trim().split('(')[0].trim();
+        }
+      }
+      
+      if (!client || client.trim() === "") {
+        client = "Client VAMOS";
+      }
+      
+      // Vérifier doublon
+      const [existing] = await connection.execute(
+        `SELECT id FROM reservation 
+         WHERE idEmplacement = ? 
+         AND jour = ? 
+         AND creneau = ? 
+         AND terrain = ?`,
+        [idEmplacement, jour, creneau, terrain]
+      );
+      
+      if (existing.length > 0) {
+        results.push({
+          slotId: slot.slotId,
+          status: 'skipped',
+          reason: 'Déjà existant',
+          existingId: existing[0].id
+        });
+        continue;
+      }
+      
+      // Insérer
+      const [insertResult] = await connection.execute(
+        `INSERT INTO reservation 
+        (idEmplacement, terrain, type, jour, creneau, client, telephone, remarque, statut, avance, prixTotal, type_paiement) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          idEmplacement,
+          terrain,
+          type,
+          jour,
+          creneau,
+          client,
+          slot.clientPhoneNumber || "",
+          slot.remarks || `VAMOS ${slot.slotId}`,
+          statut,
+          0,
+          slot.amount || 0,
+          'espece'
+        ]
+      );
+      
+      results.push({
+        slotId: slot.slotId,
+        status: 'inserted',
+        reservationId: insertResult.insertId,
+        client: client,
+        jour: jour,
+        creneau: creneau
+      });
+    }
+    
+    await connection.commit();
+    
+    res.json({
+      success: true,
+      total: reservedSlots.length,
+      inserted: results.filter(r => r.status === 'inserted').length,
+      skipped: results.filter(r => r.status === 'skipped').length,
+      results: results
+    });
+    
   } catch (error) {
+    await connection.rollback();
     console.error('Erreur:', error);
     res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
   }
 };
 
