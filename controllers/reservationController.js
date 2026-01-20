@@ -7,18 +7,6 @@ import pool from "../config/db.js";
 import axios from 'axios';
 
 
-// Configuration VAMOS
-const VAMOS_CONFIG = {
-  baseUrl: 'https://vamos-staging-webapi-bqbqahgpdqd9gwec.italynorth-01.azurewebsites.net/api/v1',
-  clientId: '099F89B0-1148-40F8-B4A4-81E0D6B73141',
-  facilityId: '10163',
-  terrainCharAt: 1,
-  credentials: {
-    email: "ahmedmahjoub120321+admin-vs@gmail.com",
-    password: "@VsStaging1!**",
-    platform: 1
-  }
-};
 
 // const VAMOS_CONFIG = {
 //   baseUrl: 'https://vamos-webapi-chc2ejhfh4dndsdb.italynorth-01.azurewebsites.net/api/v2',
@@ -32,7 +20,18 @@ const VAMOS_CONFIG = {
 //   }
 // };
 
-
+// Configuration VAMOS
+const VAMOS_CONFIG = {
+  baseUrl: 'https://vamos-staging-webapi-bqbqahgpdqd9gwec.italynorth-01.azurewebsites.net/api/v1',
+  clientId: '099F89B0-1148-40F8-B4A4-81E0D6B73141',
+  facilityId: '10163',
+  terrainCharAt: 1,
+  credentials: {
+    email: "ahmedmahjoub120321+admin-vs@gmail.com",
+    password: "@VsStaging1!**",
+    platform: 1
+  }
+};
 
 // Fonction pour authentifier auprès de VAMOS
 const authenticateVamos = async () => {
@@ -267,9 +266,60 @@ export const addNewReservation = async (req, res) => {
 };
 
 export const getSynchronization = async (req, res) => {
-  console.log("data111111" , req.body)
+  console.log("Données reçues:", req.body);
 
-}
+  try {
+    const { weekRange, sportId , idEmplacement , type , statut , terrain} = req.body;
+    const jour = "jour 22/01/2026"
+
+    if (!weekRange || !sportId) {
+      return res.status(400).json({
+        error: "Les paramètres weekRange et sportId sont requis"
+      });
+    }
+
+    // Parser l'intervalle de dates
+    const [startStr, endStr] = weekRange.split(' - ').map(str => str.trim());
+    const [startDay, startMonth, startYear] = startStr.split('/').map(Number);
+    const [endDay, endMonth, endYear] = endStr.split('/').map(Number);
+    
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+    endDate.setHours(23, 59, 59, 999);
+
+    // Authentifier auprès de VAMOS
+    const accessToken = await authenticateVamos();
+    
+    // Récupérer les slots pour le sportId spécifié
+    const response = await axios.get(
+      `${VAMOS_CONFIG.baseUrl}/slots/facility/${VAMOS_CONFIG.facilityId}/sport/${sportId}?coachingAcademy=false&fullHistory=false`,
+      {
+        headers: {
+          'X-Client-Id': VAMOS_CONFIG.clientId,
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
+    );
+
+    // Filtrer: status=1 ET date dans l'intervalle
+    const reservedSlots = response.data.filter(slot => {
+      if (slot.status !== 1) return false; // Seulement réservés
+      const slotDate = new Date(slot.startTime);
+      return slotDate >= startDate && slotDate <= endDate;
+    });
+
+    // Trier par date
+    reservedSlots.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+    // Retourner les slots réservés
+     console.log("reservedSlots" , reservedSlots)
+    res.json(reservedSlots);
+
+  } catch (error) {
+    console.error('Erreur:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
 
 // Dupliquer une réservation (modifié)
 export const addDupliquer = async (req, res) => {
