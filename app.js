@@ -41,6 +41,7 @@ import presenceCoachRoutes from "./routes/presenceCoachRoutes.js"
 import suivieRoutes from "./routes/suivieRoute.js"
 import recettesRoutes from "./routes/recettesRoutes.js"
 import performencesRoutes from "./routes/performencesRoutes.js"
+import sessionRoutes from "./routes/sessionRoutes.js"
 
 const app = express();
 
@@ -82,6 +83,7 @@ app.use('/api/presenceCoach', presenceCoachRoutes);
 app.use('/api/suivie', suivieRoutes);
 app.use('/api/recettes', recettesRoutes);
 app.use('/api/performences', performencesRoutes);
+app.use('/api/session', sessionRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {
