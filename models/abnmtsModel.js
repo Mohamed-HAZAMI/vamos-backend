@@ -727,6 +727,9 @@ SELECT
     a.date_fin,
     a.type_paiement as type_paiement_abonnement,
     
+    -- Ajout du nombre de séances
+    COALESCE(pc.nombre_seances, 0) as nombre_seances,
+    
     -- Total des versements (somme des montants de details_versements)
     COALESCE(SUM(hv.montant_verse), 0) as total_verse,
     
@@ -770,6 +773,8 @@ SELECT
     
 FROM pack p
 LEFT JOIN abnmts a ON p.abnmts_id = a.id
+-- Ajout de la jointure avec pack_categorie
+LEFT JOIN pack_categorie pc ON a.pack_categorie_id = pc.id
 LEFT JOIN adherents adh ON p.adherent_id = adh.id
 LEFT JOIN ecoles e ON p.ecole_id = e.id
 LEFT JOIN \`groups\` g ON p.group_id = g.id
@@ -795,6 +800,7 @@ GROUP BY
     a.date_debut,
     a.date_fin,
     a.type_paiement,
+    pc.nombre_seances,  -- Ajout au GROUP BY
     -- NOUVEAUX CHAMPS GROUP BY
     adh.type_paiement_assurance,
     adh.banque,

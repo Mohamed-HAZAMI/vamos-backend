@@ -72,8 +72,6 @@ const reserveVamosSlot = async (dateDeReservation, clientName, sportId  ,terrain
       }
     );
 
-    // console.log("allSlots" , response.data)
-
     const allSlots = response.data;
 
     // 3. Trouver le slot correspondant à la dateDeReservation (status = 0)
@@ -266,14 +264,13 @@ export const addNewReservation = async (req, res) => {
 };
 
 export const getSynchronization = async (req, res) => {
-  console.log("Données reçues:", req.body);
 
   const connection = await pool.getConnection();
   
   try {
     await connection.beginTransaction();
 
-    const { weekRange, sportId, idEmplacement, type = "passager", statut = "réservé" } = req.body;
+    const { weekRange, sportId, idEmplacement , type = "passager", statut = "réservé" } = req.body;
 
     if (!weekRange || !sportId || !idEmplacement) {
       return res.status(400).json({
@@ -323,18 +320,19 @@ export const getSynchronization = async (req, res) => {
         year: 'numeric'
       });
       
-      // Formater créneau
+      // Formater créneau avec 'h' pour les deux parties
       const formatTime = (date) => {
         const hours = date.getHours().toString().padStart(2, '0');
         const minutes = date.getMinutes().toString().padStart(2, '0');
         return `${hours}h${minutes}`;
       };
       
-      const creneau = `${formatTime(startTime)}-${formatTime(endTime).replace('h', ':')}`;
+      // Format final: "08h00-09h30" (pas de :, que des h)
+      const creneau = `${formatTime(startTime)}-${formatTime(endTime)}`;
       
       // Déterminer terrain
-      const terrainMatch = slot.text.match(/^([A-Z]\d+)/);
-      const terrain = terrainMatch ? terrainMatch[1] : "T1";
+      const terrainMatch = slot.text.charAt(VAMOS_CONFIG.terrainCharAt);
+      const terrain = `T${terrainMatch}`;
       
       // Client
       let client = slot.clientName || "";
