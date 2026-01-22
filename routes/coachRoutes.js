@@ -10,13 +10,13 @@ import {
   getSeancesByMonth
 } from '../controllers/coachController.js';
 
-import { authenticateToken ,  requireAdmin} from '../middleware/authMiddleware.js'; 
+import { authenticateToken ,  requireAdmin ,requireAdminOrCoach} from '../middleware/authMiddleware.js'; 
 
 const router = express.Router();
 
 // Routes pour les coaches
 router.post('/', authenticateToken , requireAdmin, createCoach); // Créer un coach
-router.get('/', authenticateToken , requireAdmin, getAllCoaches); // Récupérer tous les coaches
+router.get('/', authenticateToken , requireAdminOrCoach, getAllCoaches); // Récupérer tous les coaches
 router.get('/names', authenticateToken , requireAdmin, getAllCoachNames); // Récupérer les noms des coaches
 router.get('/:id', authenticateToken , requireAdmin, getCoachById); // Récupérer un coach par ID
 router.put('/:id', authenticateToken , requireAdmin, updateCoach); // Mettre à jour un coach

@@ -23,7 +23,7 @@ import {
   getImage
 } from '../controllers/adherentController.js';
 
-import { authenticateToken , requireAdmin} from "../middleware/authMiddleware.js";
+import { authenticateToken , requireAdmin , requireAdminOrCoach} from "../middleware/authMiddleware.js";
 
 // Importez les nouveaux contrôleurs pour les images
 
@@ -31,7 +31,7 @@ const router = express.Router();
 
 // Routes existantes
 router.post('/', authenticateToken , requireAdmin, createAdherent);
-router.get('/', authenticateToken , requireAdmin , getAllAdherents);
+router.get('/', authenticateToken , requireAdminOrCoach , getAllAdherents);
 router.get('/groupe/:idGroupe/ecole/:idCour', getAdherentByEcoleBycour);
 router.get('/names', authenticateToken , requireAdmin, getAllAdherentNames);
 router.get('/stats', authenticateToken , requireAdmin, getAdherentStats);

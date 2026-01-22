@@ -139,7 +139,96 @@ export const requireAdmin = (req, res, next) => {
   next();
 };
 
-// 3. Middleware générique pour rôles spécifiques
+// 3. Middleware pour COACH SEULEMENT
+export const requireCoach = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ 
+      success: false,
+      error: 'Not authenticated' 
+    });
+  }
+  
+  if (req.user.role !== 'coach') {
+    return res.status(403).json({ 
+      success: false,
+      error: 'Access denied. Coach privileges required.',
+      userRole: req.user.role,
+      requiredRole: 'coach'
+    });
+  }
+  
+  next();
+};
+
+// 4. Middleware pour ADMIN OU COACH
+export const requireAdminOrCoach = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ 
+      success: false,
+      error: 'Not authenticated' 
+    });
+  }
+  
+  if (req.user.role !== 'admin' && req.user.role !== 'coach') {
+    return res.status(403).json({ 
+      success: false,
+      error: 'Access denied. Administrator or Coach privileges required.',
+      userRole: req.user.role,
+      allowedRoles: ['admin', 'coach']
+    });
+  }
+  
+  next();
+};
+
+// 5. Middleware pour vérifier si l'utilisateur est le propriétaire de la ressource ou admin
+export const requireOwnerOrAdmin = (resourceOwnerIdField = 'userId') => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Not authenticated' 
+      });
+    }
+    
+    // Si c'est un admin, autoriser l'accès
+    if (req.user.role === 'admin') {
+      return next();
+    }
+    
+    // Récupérer l'ID du propriétaire de la ressource
+    const resourceOwnerId = req.params[resourceOwnerIdField] || req.body[resourceOwnerIdField];
+    
+    // Si l'utilisateur est le propriétaire de la ressource
+    if (resourceOwnerId && req.user.id == resourceOwnerId) {
+      return next();
+    }
+    
+    // Si c'est un coach, vérifier s'il peut accéder à certaines ressources
+    if (req.user.role === 'coach') {
+      // Ici vous pouvez ajouter une logique spécifique pour les coachs
+      // Par exemple, vérifier si le coach a accès à ce groupe d'adhérents, etc.
+      // Pour l'instant, on refuse par défaut
+      return res.status(403).json({ 
+        success: false,
+        error: 'Access denied. You can only access your own resources.',
+        userRole: req.user.role,
+        userId: req.user.id,
+        resourceOwnerId: resourceOwnerId
+      });
+    }
+    
+    // Accès refusé
+    return res.status(403).json({ 
+      success: false,
+      error: 'Access denied. Administrator privileges or resource ownership required.',
+      userRole: req.user.role,
+      required: ['admin', 'resource_owner']
+    });
+  };
+};
+
+// 6. Middleware générique pour rôles spécifiques
 export const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -159,5 +248,38 @@ export const requireRole = (...roles) => {
     }
     
     next();
+  };
+};
+
+// 7. Middleware pour ADMIN, COACH ou USER (propriétaire de la ressource)
+export const requireAdminOrCoachOrOwner = (resourceOwnerIdField = 'userId') => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Not authenticated' 
+      });
+    }
+    
+    // Si c'est un admin ou coach, autoriser l'accès
+    if (req.user.role === 'admin' || req.user.role === 'coach') {
+      return next();
+    }
+    
+    // Récupérer l'ID du propriétaire de la ressource
+    const resourceOwnerId = req.params[resourceOwnerIdField] || req.body[resourceOwnerIdField] || req.query[resourceOwnerIdField];
+    
+    // Si l'utilisateur est le propriétaire de la ressource
+    if (resourceOwnerId && req.user.id == resourceOwnerId) {
+      return next();
+    }
+    
+    // Accès refusé
+    return res.status(403).json({ 
+      success: false,
+      error: 'Access denied. Administrator, Coach privileges or resource ownership required.',
+      userRole: req.user.role,
+      allowedRoles: ['admin', 'coach', 'resource_owner']
+    });
   };
 };
