@@ -85,13 +85,8 @@ export const getAllCoaches = async (req, res) => {
   try {
     const coaches = await Coach.getAll();
     
-    // Ne pas envoyer les mots de passe dans la liste
-    const coachesWithoutPassword = coaches.map(coach => {
-      const { password, ...coachWithoutPassword } = coach;
-      return coachWithoutPassword;
-    });
-    
-    return res.status(200).json(coachesWithoutPassword);
+    // Retourner tous les champs, y compris le mot de passe
+    return res.status(200).json(coaches);
   } catch (err) {
     return res.status(500).json({ 
       message: 'Erreur lors de la récupération des coaches', 
